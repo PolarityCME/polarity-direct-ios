@@ -1,0 +1,3 @@
+CANONICAL iOS WORKSPACE
+Continue development here.
+Android canonical repo: polarity-direct-android
