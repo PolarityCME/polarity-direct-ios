@@ -87,7 +87,11 @@ final class TCPClient: ObservableObject {
             return false
         }
 
-        let payloadStr = CMEFrame.makeText(text)
+        let encoded = CMEDemo.encode(text)
+        let payloadStr = CMEFrame.makeText(encoded)
+
+        print("[iPhone] TX plain: \(text)")
+        print("[iPhone] TX encoded: \(encoded)")
         let payload = (payloadStr + "\n").data(using: .utf8)!
 
         c.send(content: payload, completion: .contentProcessed { [weak self] err in
