@@ -239,8 +239,8 @@ final class TCPClient: ObservableObject {
 
         case "TEXT":
             let decoded = CMECodec.decodePayload(payload)
+            self.messages.append(ChatMsg(dir: "RX", text: decoded))
             DispatchQueue.main.async {
-                self.messages.append(ChatMsg(dir: "RX", text: "Samsung: \(decoded)"))
             }
 
         default:
