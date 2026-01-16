@@ -1,98 +1,35 @@
 import Foundation
 
 enum CMECodec {
-    static let phi = 1.618033988749895
-    static let r0Prefix = "R0:"
-    static let r1Prefix = "R1:"
 
-    // MARK: - Public
+    // MARK: - MVP4 U64 Safe6
 
-    static func encode(_ text: String, layers: Int) -> String {
-        if layers <= 0 { return r0Encode(text) }
-        return r1Encode(text)
+    static let u64Prefix = "U64:"
+
+    /// Encode up to 6 UTF-8 bytes into an 8-byte "sphere":
+    /// [b0 b1 b2 b3 b4 b5 0x00 0x00] then Base64, prefixed with "U64:"
+    static func encodeU64Safe6(_ text: String) -> String {
+        let bytes6 = Array(text.utf8.prefix(6))
+        var buf = [UInt8](repeating: 0, count: 8)
+        for i in 0..<bytes6.count { buf[i] = bytes6[i] }
+
+        let data = Data(buf)                     // EXACT 8 bytes
+        return u64Prefix + data.base64EncodedString()
     }
 
-    static func decode(_ payload: String) -> String {
-        if payload.hasPrefix(r0Prefix) { return r0Decode(payload) }
-        if payload.hasPrefix(r1Prefix) { return r1Decode(payload) }
-        return payload // fail-open for now
-    }
+    /// Decode "U64:<base64>" -> first 6 bytes -> UTF-8 string, trimming trailing NULs/spaces.
+    static func decodePayload(_ payload: String) -> String {
+        guard payload.hasPrefix(u64Prefix) else { return payload }
 
-    // MARK: - R0
+        let b64 = String(payload.dropFirst(u64Prefix.count))
+        guard let data = Data(base64Encoded: b64), data.count == 8 else { return payload }
 
-    private static func r0Encode(_ text: String) -> String {
-        let A = textToU64(text)
-        let r0 = (A > 0) ? sqrt(Double(A) / (4.0 * Double.pi)) : 0.0
-        return r0Prefix + packF64B64LittleEndian(r0)
-    }
+        let first6 = data.prefix(6)
 
-    private static func r0Decode(_ payload: String) -> String {
-        let b64 = String(payload.dropFirst(r0Prefix.count))
-        guard let r0: Double = unpackF64B64LittleEndian(b64) else { return payload }
-        let areaD = (4.0 * Double.pi) * (r0 * r0)
-        let A = UInt64(areaD.rounded())
-        return u64ToText(A)
-    }
-
-    // MARK: - R1 (demo step)
-
-    private static func r1Encode(_ text: String) -> String {
-        let A = textToU64(text)
-        let r0 = (A > 0) ? sqrt(Double(A) / (4.0 * Double.pi)) : 0.0
-        let r1 = r0 / phi
-        return r1Prefix + packF64B64LittleEndian(r1)
-    }
-
-    private static func r1Decode(_ payload: String) -> String {
-        let b64 = String(payload.dropFirst(r1Prefix.count))
-        guard let r1: Double = unpackF64B64LittleEndian(b64) else { return payload }
-        let r0 = r1 * phi
-        let areaD = (4.0 * Double.pi) * (r0 * r0)
-        let A = UInt64(areaD.rounded())
-        return u64ToText(A)
-    }
-
-    // MARK: - 8-byte meaning helpers (match Python)
-
-    // Python: int.from_bytes(b, "big", signed=False)
-    private static func textToU64(_ text: String) -> UInt64 {
-        var b = Array(text.utf8.prefix(8))
-        while b.count < 8 { b.append(0) }
-
-        var x: UInt64 = 0
-        for byte in b {
-            x = (x << 8) | UInt64(byte)
-        }
-        return x
-    }
-
-    private static func u64ToText(_ x: UInt64) -> String {
-        var v = x
-        let data = Data(bytes: &v, count: 8).reversed()
-        return String(decoding: data, as: UTF8.self)
+        // Remove trailing 0x00
+        let trimmed = first6.reversed().drop(while: { $0 == 0 }).reversed()
+        return String(decoding: trimmed, as: UTF8.self)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
             .trimmingCharacters(in: .controlCharacters)
     }
-
-    // MARK: - Double <-> base64 (match Python struct.pack("<d", x))
-
-    private static func packF64B64LittleEndian(_ x: Double) -> String {
-        let u = x.bitPattern.littleEndian
-        var v = u
-        let data = Data(bytes: &v, count: 8)
-        return data.base64EncodedString()
-    }
-
-    private static func unpackF64B64LittleEndian(_ b64: String) -> Double? {
-        guard let data = Data(base64Encoded: b64), data.count == 8 else { return nil }
-        let u: UInt64 = data.withUnsafeBytes { ptr in
-            ptr.load(as: UInt64.self)
-        }
-        return Double(bitPattern: UInt64(littleEndian: u))
-    }
-}//
-//  CMECodec.swift
-//  PolarityDirect
-//
-//  Created by Wayne Russell on 2026-01-15.
-//
-
+}
